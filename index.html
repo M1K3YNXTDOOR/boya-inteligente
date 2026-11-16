@@ -1,30 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Boya inteligente 3D</title>
+  <title>Boya Marina Inteligente - Roatán 3D</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { overflow: hidden; background: #031525; color: #e2e8f0; }
     #canvas-container { width: 100vw; height: 100vh; display: block; }
 
     #dashboard {
-      position: absolute; top: 18px; left: 18px; width: 320px;
-      background: rgba(6, 24, 40, 0.86); backdrop-filter: blur(12px);
+      position: absolute; top: 18px; left: 18px; width: 335px;
+      background: rgba(6, 24, 40, 0.88); backdrop-filter: blur(12px);
       border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 14px;
       padding: 18px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); z-index: 10;
     }
-    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
-    .header h1 { font-size: 1.05rem; color: #38bdf8; letter-spacing: 0.3px; }
-    .badge { padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: #1e293b; color: #94a3b8; }
+    .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+    .header h1 { font-size: 1.02rem; color: #38bdf8; letter-spacing: 0.2px; line-height: 1.25; }
+    .header p { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; }
+    .badge { padding: 4px 8px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; background: #1e293b; color: #94a3b8; white-space: nowrap; }
     .badge.active { background: rgba(14, 165, 233, 0.25); color: #38bdf8; border: 1px solid #38bdf8; }
     .badge.danger { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid #ef4444; }
 
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
     .card { background: rgba(15, 41, 66, 0.65); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); }
-    .card .lbl { font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px; }
-    .card .val { font-size: 1.1rem; font-weight: 700; color: #f8fafc; }
+    .card .lbl { font-size: 0.71rem; color: #94a3b8; margin-bottom: 4px; }
+    .card .val { font-size: 1.05rem; font-weight: 700; color: #f8fafc; }
 
     .bar-wrap { margin-bottom: 14px; }
     .bar-top { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 5px; }
@@ -36,7 +37,7 @@
     input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
 
     button {
-      padding: 9px 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.84rem;
+      padding: 9px 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.83rem;
       cursor: pointer; transition: all 0.15s; color: #fff; background: #0284c7;
     }
     button:hover { background: #0369a1; }
@@ -49,9 +50,9 @@
 
     #legend {
       position: absolute; bottom: 16px; right: 16px;
-      background: rgba(6, 24, 40, 0.78); backdrop-filter: blur(8px);
+      background: rgba(6, 24, 40, 0.82); backdrop-filter: blur(8px);
       padding: 10px 14px; border-radius: 10px; font-size: 0.78rem;
-      border: 1px solid rgba(255,255,255,0.1); display: flex; gap: 14px;
+      border: 1px solid rgba(255,255,255,0.1); display: flex; gap: 14px; flex-wrap: wrap;
     }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
   </style>
@@ -67,51 +68,55 @@
 <body>
   <div id="dashboard">
     <div class="header">
-      <h1>Coral Thermal Buoy</h1>
-      <span id="status-badge" class="badge">STANDBY</span>
+      <div>
+        <h1>Boya Marina Inteligente</h1>
+        <p>Monitoreo Arrecife Mesoamericano - Roatán</p>
+      </div>
+      <span id="status-badge" class="badge">EN ESPERA</span>
     </div>
 
     <div class="grid">
       <div class="card">
-        <div class="lbl">Reef Water Temp</div>
+        <div class="lbl">Temp. Arrecife (DS18B20)</div>
         <div class="val" id="reef-temp">27.5 °C</div>
       </div>
       <div class="card">
-        <div class="lbl">Deep Trench Temp</div>
+        <div class="lbl">Agua Profunda (Fosa)</div>
         <div class="val" style="color:#38bdf8;">18.5 °C</div>
       </div>
       <div class="card">
-        <div class="lbl">Pump Output (PWM)</div>
+        <div class="lbl">Bomba Surgencia (PWM)</div>
         <div class="val" id="pump-pwm">0%</div>
       </div>
       <div class="card">
-        <div class="lbl">TDS / Turbidity</div>
-        <div class="val" id="water-qual" style="font-size:0.9rem;">35k / 4 NTU</div>
+        <div class="lbl">TDS / Turbidez (SEN0189)</div>
+        <div class="val" id="water-qual" style="font-size:0.88rem;">35k / 4 NTU</div>
       </div>
     </div>
 
     <div class="bar-wrap">
-      <div class="bar-top"><span>Coral Reef Health</span><strong id="health-txt">100%</strong></div>
+      <div class="bar-top"><span>Salud del Arrecife Coralino</span><strong id="health-txt">100%</strong></div>
       <div class="bar-bg"><div class="bar-fill" id="health-bar"></div></div>
     </div>
 
     <div class="ctrl-group">
       <div class="slider-row">
         <div style="display:flex;justify-content:space-between;">
-          <span>Ambient Ocean Temp:</span><strong id="amb-txt">27.5 °C</strong>
+          <span>Temperatura Ambiental:</span><strong id="amb-txt">27.5 °C</strong>
         </div>
         <input type="range" id="amb-slider" min="26.0" max="33.0" step="0.1" value="27.5" />
       </div>
-      <button class="warn" id="btn-heat">Trigger Marine Heatwave (32°C)</button>
-      <button class="danger" id="btn-spill">Trigger Oil / Turbidity Spill</button>
-      <button class="secondary" id="btn-reset">Reset Simulation</button>
+      <button class="warn" id="btn-heat">Simular Ola de Calor (32°C)</button>
+      <button class="danger" id="btn-spill">Simular Derrame / Turbidez</button>
+      <button class="secondary" id="btn-reset">Reiniciar Simulación</button>
     </div>
   </div>
 
   <div id="legend">
-    <span><i class="dot" style="background:#e2c285;"></i>Sandy Shore</span>
-    <span><i class="dot" style="background:#10b981;"></i>Healthy Coral</span>
-    <span><i class="dot" style="background:#38bdf8;"></i>Cold Upwelling Plume</span>
+    <span><i class="dot" style="background:#e2c285;"></i>Playa y Plataforma</span>
+    <span><i class="dot" style="background:#10b981;"></i>Coral Saludable</span>
+    <span><i class="dot" style="background:#facc15;"></i>Boya PVC / ESP32-S3</span>
+    <span><i class="dot" style="background:#38bdf8;"></i>Pluma de Agua Fría</span>
   </div>
 
   <div id="canvas-container"></div>
@@ -146,8 +151,8 @@
     controls.enableDamping = true;
     controls.target.set(-1, -2, 0);
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    // Iluminación
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
     sun.position.set(-18, 28, 14);
     scene.add(sun);
@@ -156,7 +161,7 @@
     deepLight.position.set(8, -8, 4);
     scene.add(deepLight);
 
-    // Bathymetry: Sloped Beach -> Shallow Reef Terrace -> Deep Drop-Off
+    // Batimetría: Playa Arenosa -> Plataforma Coralina -> Talud y Fosa Profunda
     const terrainGeo = new THREE.PlaneGeometry(56, 28, 80, 20);
     terrainGeo.rotateX(-Math.PI / 2);
     const pos = terrainGeo.attributes.position;
@@ -166,12 +171,12 @@
       const wave = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.22;
       let y = 0;
       if (x < -10) {
-        y = (-x - 10) * 0.48 + wave * 0.4; // Sandy beach above water
+        y = (-x - 10) * 0.48 + wave * 0.4; // Playa arenosa
       } else if (x < 4) {
-        y = -2.4 + wave; // Shallow coral shelf
+        y = -2.4 + wave; // Plataforma poco profunda
       } else {
         const drop = Math.min(16, (x - 4) * 1.45);
-        y = -2.4 - drop + wave * 0.5; // Deep ocean trench
+        y = -2.4 - drop + wave * 0.5; // Fosa oceánica profunda
       }
       pos.setY(i, y);
     }
@@ -182,7 +187,7 @@
     );
     scene.add(seabed);
 
-    // Ocean Surface & Deep Water Volume
+    // Superficie del Mar Semitransparente
     const oceanSurface = new THREE.Mesh(
       new THREE.PlaneGeometry(56, 28, 32, 16),
       new THREE.MeshPhysicalMaterial({
@@ -194,7 +199,7 @@
     oceanSurface.position.y = 0.6;
     scene.add(oceanSurface);
 
-    // Coral Reef Clusters along the Shallow Shelf
+    // Colonias de Coral en la Plataforma
     const coralGroup = new THREE.Group();
     const coralMeshes = [];
     const baseColors = [0x10b981, 0x059669, 0x34d399, 0xf43f5e, 0xf97316];
@@ -217,43 +222,92 @@
     }
     scene.add(coralGroup);
 
-    // Autonomous Thermal Buoy over Trench Drop-Off (x = 6.2)
+    // Boya Marina Inteligente (Estructura PVC 1", 4 Flotadores Amarillos, Caja ESP32-S3 y Sonda)
     const buoy = new THREE.Group();
     buoy.position.set(6.2, 0.6, 0);
 
-    const hull = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.25, 0.95, 1.5, 20),
-      new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35 })
+    const pvcMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+    const floatMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
+    const blackMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+
+    // 1. Marco cuadrado de PVC (1") y 4 flotadores redondos amarillos
+    const frameOffset = 1.15;
+    const pipeLen = frameOffset * 2;
+    const barGeoX = new THREE.CylinderGeometry(0.11, 0.11, pipeLen, 12);
+    barGeoX.rotateZ(Math.PI / 2);
+    const barGeoZ = new THREE.CylinderGeometry(0.11, 0.11, pipeLen, 12);
+    barGeoZ.rotateX(Math.PI / 2);
+
+    const frontBar = new THREE.Mesh(barGeoX, pvcMat); frontBar.position.set(0, 0.25, frameOffset);
+    const backBar = new THREE.Mesh(barGeoX, pvcMat);  backBar.position.set(0, 0.25, -frameOffset);
+    const leftBar = new THREE.Mesh(barGeoZ, pvcMat);  leftBar.position.set(-frameOffset, 0.25, 0);
+    const rightBar = new THREE.Mesh(barGeoZ, pvcMat); rightBar.position.set(frameOffset, 0.25, 0);
+    buoy.add(frontBar, backBar, leftBar, rightBar);
+
+    const corners = [
+      [-frameOffset, -frameOffset], [frameOffset, -frameOffset],
+      [-frameOffset, frameOffset],  [frameOffset, frameOffset]
+    ];
+    corners.forEach(([cx, cz]) => {
+      const floatBall = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), floatMat);
+      floatBall.position.set(cx, -0.15, cz);
+      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.28, 12), blackMat);
+      strap.rotation.z = Math.PI / 2;
+      strap.position.set(cx, 0.25, cz);
+      buoy.add(floatBall, strap);
+    });
+
+    // 2. Caja electrónica transparente (ESP32-S3 y batería)
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.7, 0.9),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xe2e8f0, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.1
+      })
     );
-    const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1, 0.1, 1.8, 10),
-      new THREE.MeshStandardMaterial({ color: 0xe2e8f0 })
+    box.position.y = 0.72;
+
+    const pcbBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.75, 0.15, 0.6),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a })
     );
-    mast.position.y = 1.5;
+    pcbBoard.position.y = 0.65;
 
     const beacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 12, 12),
+      new THREE.SphereGeometry(0.14, 12, 12),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
     );
-    beacon.position.y = 2.45;
+    beacon.position.set(0.15, 0.78, 0.15);
+
+    // 3. Mástil PVC y Antena Wi-Fi (ESP32-S3)
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.5, 12), pvcMat);
+    mast.position.y = 1.8;
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.85, 12), blackMat);
+    antenna.position.y = 2.95;
+
+    // 4. Jaula de sensores (DS18B20 / SEN0189) y tubería profunda de surgencia
+    const sensorCage = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.32, 0.95, 12, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, wireframe: true })
+    );
+    sensorCage.position.y = -1.3;
 
     const intakePipe = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, 0.24, 14.5, 16),
-      new THREE.MeshStandardMaterial({ color: 0x1e293b, transparent: true, opacity: 0.82 })
+      new THREE.CylinderGeometry(0.18, 0.18, 14.5, 16),
+      new THREE.MeshStandardMaterial({ color: 0x334155, transparent: true, opacity: 0.85 })
     );
     intakePipe.position.y = -7.2;
 
     const nozzle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.28, 1.6, 14),
+      new THREE.CylinderGeometry(0.16, 0.24, 1.5, 14),
       new THREE.MeshStandardMaterial({ color: 0x38bdf8 })
     );
     nozzle.rotation.z = Math.PI / 2;
-    nozzle.position.set(-1.0, -1.3, 0);
+    nozzle.position.set(-0.95, -1.3, 0);
 
-    buoy.add(hull, mast, beacon, intakePipe, nozzle);
+    buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, intakePipe, nozzle);
     scene.add(buoy);
 
-    // Cold-Water Upwelling & Horizontal Reef Spray Particles
+    // Partículas de Agua Fría (Surgencia Profunda + Proyección Horizontal al Arrecife)
     const pCount = 260;
     const pGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(pCount * 3);
@@ -268,7 +322,7 @@
     const particleSystem = new THREE.Points(pGeo, pMat);
     scene.add(particleSystem);
 
-    // UI Controls
+    // Controles de Interfaz
     const ambSlider = document.getElementById('amb-slider');
     ambSlider.addEventListener('input', (e) => {
       state.ambientTemp = parseFloat(e.target.value);
@@ -288,7 +342,7 @@
       ambSlider.value = 27.5;
     });
 
-    // Simulation Loop
+    // Bucle Principal de Simulación
     const clock = new THREE.Clock();
     const bleachedWhite = new THREE.Color(0xf1f5f9);
 
@@ -297,36 +351,36 @@
       const dt = Math.min(clock.getDelta(), 0.1);
       const elapsed = clock.getElapsedTime();
 
-      // Buoy gentle bobbing on waves
+      // Flotación suave en el oleaje
       buoy.position.y = 0.6 + Math.sin(elapsed * 2.2) * 0.12;
       buoy.rotation.z = Math.sin(elapsed * 1.7) * 0.04;
 
-      // Pump & Failsafe Control Logic
+      // Lógica de Control de Bomba y Bloqueo por Contaminación (Failsafe)
       const badge = document.getElementById('status-badge');
       if (state.isSpill) {
         state.pumpPWM = 0;
-        badge.textContent = 'LOCKOUT: SPILL';
+        badge.textContent = 'BLOQUEO: DERRAME';
         badge.className = 'badge danger';
         beacon.material.color.setHex(0xef4444);
       } else if (state.reefTemp >= 29.0) {
         const factor = Math.min(1, (state.reefTemp - 28.8) / 2.2);
         state.pumpPWM = Math.round(55 + factor * 45);
-        badge.textContent = 'COOLING ACTIVE';
+        badge.textContent = 'ENFRIANDO';
         badge.className = 'badge active';
         beacon.material.color.setHex(0x38bdf8);
       } else if (state.reefTemp <= 28.4) {
         state.pumpPWM = 0;
-        badge.textContent = 'STANDBY';
+        badge.textContent = 'EN ESPERA';
         badge.className = 'badge';
         beacon.material.color.setHex(0x10b981);
       }
 
-      // Thermodynamics Update
+      // Termodinámica
       const q = state.pumpPWM / 100;
       const dT = 0.28 * (state.ambientTemp - state.reefTemp) - 0.45 * q * (state.reefTemp - state.deepTemp);
       state.reefTemp += dT * dt;
 
-      // Coral Bleaching & Recovery
+      // Blanqueamiento y Recuperación Coralina
       if (state.reefTemp > 30.0) {
         const excess = state.reefTemp - 30.0;
         state.coralHealth = Math.max(0, state.coralHealth - 4.0 * excess * excess * dt);
@@ -339,7 +393,7 @@
         mesh.material.color.copy(bleachedWhite).lerp(origColor, healthRatio);
       });
 
-      // Animate Cold Water Particles
+      // Animación de Partículas de Agua Fría
       particleSystem.visible = state.pumpPWM > 0;
       if (state.pumpPWM > 0) {
         const speed = (state.pumpPWM / 100) * 0.52;
@@ -348,13 +402,13 @@
           pLife[i] = (pLife[i] + speed * dt) % 1;
           const t = pLife[i];
           if (t < 0.42) {
-            // Upward inside deep pipe
+            // Subiendo por la tubería profunda
             const u = t / 0.42;
             arr[i * 3] = 6.2 + (Math.random() - 0.5) * 0.16;
             arr[i * 3 + 1] = -13.5 + u * 12.8;
             arr[i * 3 + 2] = (Math.random() - 0.5) * 0.16;
           } else {
-            // Jetting horizontally across shallow coral terrace
+            // Dispersándose horizontalmente sobre el arrecife
             const u = (t - 0.42) / 0.58;
             arr[i * 3] = 5.2 - u * 14.5;
             arr[i * 3 + 1] = -0.7 - u * 1.25 + Math.sin(u * 8 + i) * 0.18;
@@ -364,7 +418,7 @@
         pGeo.attributes.position.needsUpdate = true;
       }
 
-      // Update Dashboard Readouts
+      // Actualizar Telemetría en Pantalla
       document.getElementById('amb-txt').textContent = `${state.ambientTemp.toFixed(1)} °C`;
       document.getElementById('reef-temp').textContent = `${state.reefTemp.toFixed(2)} °C`;
       document.getElementById('pump-pwm').textContent = `${state.pumpPWM}%`;
