@@ -10,7 +10,7 @@
     #canvas-container { width: 100vw; height: 100vh; display: block; }
 
     #dashboard {
-      position: absolute; top: 18px; left: 18px; width: 335px;
+      position: absolute; top: 18px; left: 18px; width: 340px;
       background: rgba(6, 24, 40, 0.88); backdrop-filter: blur(12px);
       border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 14px;
       padding: 18px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); z-index: 10;
@@ -114,9 +114,9 @@
 
   <div id="legend">
     <span><i class="dot" style="background:#e2c285;"></i>Playa y Plataforma</span>
-    <span><i class="dot" style="background:#10b981;"></i>Coral Saludable</span>
-    <span><i class="dot" style="background:#facc15;"></i>Boya PVC / ESP32-S3</span>
+    <span><i class="dot" style="background:#10b981;"></i>Arrecife Coralino</span>
     <span><i class="dot" style="background:#38bdf8;"></i>Pluma de Agua Fría</span>
+    <span><i class="dot" style="background:#a855f7;"></i>Mancha Aceite / Turbidez</span>
   </div>
 
   <div id="canvas-container"></div>
@@ -131,16 +131,19 @@
       deepTemp: 18.5,
       coralHealth: 100,
       pumpPWM: 0,
-      isSpill: false
+      isSpill: false,
+      spillLevel: 0 // Smooth transition 0 -> 1 for murky water & oil slick
     };
 
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x04192c);
+    const clearBg = new THREE.Color(0x04192c);
+    const murkyBg = new THREE.Color(0x1c2519);
+    scene.background = clearBg.clone();
     scene.fog = new THREE.FogExp2(0x04192c, 0.013);
 
-    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 250);
-    camera.position.set(2, 13, 28);
+    const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 250);
+    camera.position.set(1, 11, 26);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -149,88 +152,164 @@
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.target.set(-1, -2, 0);
+    controls.target.set(-1, -2.5, 0);
 
     // Iluminación
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
     sun.position.set(-18, 28, 14);
     scene.add(sun);
 
     const deepLight = new THREE.PointLight(0x0284c7, 2.5, 40);
-    deepLight.position.set(8, -8, 4);
+    deepLight.position.set(9, -8, 4);
     scene.add(deepLight);
 
-    // Batimetría: Playa Arenosa -> Plataforma Coralina -> Talud y Fosa Profunda
-    const terrainGeo = new THREE.PlaneGeometry(56, 28, 80, 20);
+    // Función de altura del fondo marino para alinear corales y tubería curva
+    function getSeabedY(x, z = 0) {
+      const wave = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.18;
+      if (x < -10) return (-x - 10) * 0.48 + wave * 0.4; // Playa arenosa
+      if (x < 4) return -2.4 + wave; // Plataforma arrecifal
+      const drop = Math.min(14.5, (x - 4) * 1.45); // Talud hacia fosa
+      return -2.4 - drop + wave * 0.4;
+    }
+
+    // Batimetría Costera
+    const terrainGeo = new THREE.PlaneGeometry(56, 28, 90, 24);
     terrainGeo.rotateX(-Math.PI / 2);
     const pos = terrainGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      const wave = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.22;
-      let y = 0;
-      if (x < -10) {
-        y = (-x - 10) * 0.48 + wave * 0.4; // Playa arenosa
-      } else if (x < 4) {
-        y = -2.4 + wave; // Plataforma poco profunda
-      } else {
-        const drop = Math.min(16, (x - 4) * 1.45);
-        y = -2.4 - drop + wave * 0.5; // Fosa oceánica profunda
-      }
-      pos.setY(i, y);
+      pos.setY(i, getSeabedY(x, z));
     }
     terrainGeo.computeVertexNormals();
     const seabed = new THREE.Mesh(
       terrainGeo,
-      new THREE.MeshStandardMaterial({ color: 0xd8b878, roughness: 0.88, metalness: 0.05 })
+      new THREE.MeshStandardMaterial({ color: 0xd8b878, roughness: 0.9, metalness: 0.04 })
     );
     scene.add(seabed);
 
-    // Superficie del Mar Semitransparente
-    const oceanSurface = new THREE.Mesh(
-      new THREE.PlaneGeometry(56, 28, 32, 16),
-      new THREE.MeshPhysicalMaterial({
-        color: 0x0ea5e9, transparent: true, opacity: 0.34,
-        roughness: 0.15, metalness: 0.1, side: THREE.DoubleSide
-      })
-    );
+    // Superficie del Mar (cambia de azul cristalino a turbio verdoso/marrón)
+    const clearWaterColor = new THREE.Color(0x0ea5e9);
+    const murkyWaterColor = new THREE.Color(0x4d5d36);
+    const oceanMat = new THREE.MeshPhysicalMaterial({
+      color: clearWaterColor.clone(), transparent: true, opacity: 0.34,
+      roughness: 0.15, metalness: 0.1, side: THREE.DoubleSide
+    });
+    const oceanSurface = new THREE.Mesh(new THREE.PlaneGeometry(56, 28, 32, 16), oceanMat);
     oceanSurface.rotation.x = -Math.PI / 2;
     oceanSurface.position.y = 0.6;
     scene.add(oceanSurface);
 
-    // Colonias de Coral en la Plataforma
-    const coralGroup = new THREE.Group();
-    const coralMeshes = [];
-    const baseColors = [0x10b981, 0x059669, 0x34d399, 0xf43f5e, 0xf97316];
+    // Mancha Iridescente de Gasolina / Aceite en la Superficie (visible al simular derrame)
+    const slickGroup = new THREE.Group();
+    slickGroup.position.set(6.2, 0.63, 0);
+    const slickLayers = [
+      { radius: 3.4, color: 0x1e1b4b, opacity: 0.55 },
+      { radius: 2.5, color: 0x7e22ce, opacity: 0.45 },
+      { radius: 1.6, color: 0x0d9488, opacity: 0.40 }
+    ];
+    const slickMeshes = slickLayers.map((layer, idx) => {
+      const mesh = new THREE.Mesh(
+        new THREE.CircleGeometry(layer.radius, 32),
+        new THREE.MeshBasicMaterial({
+          color: layer.color, transparent: true, opacity: 0, depthWrite: false
+        })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = idx * 0.005;
+      mesh.userData.targetOpacity = layer.opacity;
+      slickGroup.add(mesh);
+      return mesh;
+    });
+    scene.add(slickGroup);
 
-    for (let i = 0; i < 36; i++) {
-      const cx = -8.5 + Math.random() * 11;
-      const cz = (Math.random() - 0.5) * 18;
-      const size = 0.45 + Math.random() * 0.55;
-      const geo = i % 2 === 0
-        ? new THREE.DodecahedronGeometry(size, 1)
-        : new THREE.IcosahedronGeometry(size * 0.85, 1);
-
-      const origColor = new THREE.Color(baseColors[i % baseColors.length]);
-      const mat = new THREE.MeshStandardMaterial({ color: origColor.clone(), roughness: 0.65 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(cx, -2.1 + Math.random() * 0.25, cz);
-      mesh.scale.y = 0.7 + Math.random() * 0.8;
-      coralGroup.add(mesh);
-      coralMeshes.push({ mesh, origColor });
+    // Partículas de Turbidez / Sedimento en el Agua
+    const turbCount = 220;
+    const turbGeo = new THREE.BufferGeometry();
+    const turbPos = new Float32Array(turbCount * 3);
+    for (let i = 0; i < turbCount; i++) {
+      turbPos[i * 3] = -10 + Math.random() * 26;
+      turbPos[i * 3 + 1] = -6 + Math.random() * 6.4;
+      turbPos[i * 3 + 2] = (Math.random() - 0.5) * 20;
     }
-    scene.add(coralGroup);
+    turbGeo.setAttribute('position', new THREE.BufferAttribute(turbPos, 3));
+    const turbMat = new THREE.PointsMaterial({ color: 0x85683f, size: 0.28, transparent: true, opacity: 0 });
+    const turbidityCloud = new THREE.Points(turbGeo, turbMat);
+    scene.add(turbidityCloud);
 
-    // Boya Marina Inteligente (Estructura PVC 1", 4 Flotadores Amarillos, Caja ESP32-S3 y Sonda)
+    // Arrecife Coralino Detallado (Corales cerebro, cuerno de ciervo, esponjas tubulares y rocas)
+    const reefGroup = new THREE.Group();
+    const coralMeshes = [];
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
+    const palette = [0x10b981, 0xf43f5e, 0xf97316, 0xec4899, 0x14b8a6, 0xeab308];
+
+    // Rocas base del arrecife
+    for (let i = 0; i < 16; i++) {
+      const rx = -8.5 + Math.random() * 11.5;
+      const rz = (Math.random() - 0.5) * 16;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7 + Math.random() * 0.6, 1), rockMat);
+      rock.position.set(rx, getSeabedY(rx, rz) + 0.15, rz);
+      rock.scale.set(1.3, 0.55, 1.1);
+      reefGroup.add(rock);
+    }
+
+    // Especies de Coral variadas
+    for (let i = 0; i < 42; i++) {
+      const cx = -8.8 + Math.random() * 12.0;
+      const cz = (Math.random() - 0.5) * 17;
+      const baseY = getSeabedY(cx, cz);
+      const origColor = new THREE.Color(palette[i % palette.length]);
+      const mat = new THREE.MeshStandardMaterial({ color: origColor.clone(), roughness: 0.55 });
+      const type = i % 3;
+
+      if (type === 0) {
+        // Coral Cerebro (domo rugoso)
+        const size = 0.42 + Math.random() * 0.45;
+        const brain = new THREE.Mesh(new THREE.SphereGeometry(size, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), mat);
+        brain.position.set(cx, baseY - 0.05, cz);
+        reefGroup.add(brain);
+        coralMeshes.push({ mesh: brain, origColor });
+      } else if (type === 1) {
+        // Coral Cuerno de Ciervo (ramificado)
+        const cluster = new THREE.Group();
+        cluster.position.set(cx, baseY, cz);
+        const branches = 3 + Math.floor(Math.random() * 3);
+        for (let b = 0; b < branches; b++) {
+          const h = 0.75 + Math.random() * 0.65;
+          const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.11, h, 8), mat);
+          branch.position.set((Math.random() - 0.5) * 0.35, h * 0.45, (Math.random() - 0.5) * 0.35);
+          branch.rotation.set((Math.random() - 0.5) * 0.55, 0, (Math.random() - 0.5) * 0.55);
+          cluster.add(branch);
+          coralMeshes.push({ mesh: branch, origColor });
+        }
+        reefGroup.add(cluster);
+      } else {
+        // Esponjas Tubulares
+        const cluster = new THREE.Group();
+        cluster.position.set(cx, baseY, cz);
+        for (let t = 0; t < 3; t++) {
+          const h = 0.55 + Math.random() * 0.5;
+          const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, h, 10), mat);
+          tube.position.set((t - 1) * 0.22, h * 0.45, (Math.random() - 0.5) * 0.2);
+          tube.rotation.z = (t - 1) * 0.18;
+          cluster.add(tube);
+          coralMeshes.push({ mesh: tube, origColor });
+        }
+        reefGroup.add(cluster);
+      }
+    }
+    scene.add(reefGroup);
+
+    // Boya Marina Inteligente (Estructura PVC 1", 4 Flotadores Amarillos, Caja ESP32-S3)
     const buoy = new THREE.Group();
-    buoy.position.set(6.2, 0.6, 0);
+    const buoyX = 6.2;
+    buoy.position.set(buoyX, 0.6, 0);
 
     const pvcMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
     const floatMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
     const blackMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
 
-    // 1. Marco cuadrado de PVC (1") y 4 flotadores redondos amarillos
     const frameOffset = 1.15;
     const pipeLen = frameOffset * 2;
     const barGeoX = new THREE.CylinderGeometry(0.11, 0.11, pipeLen, 12);
@@ -244,11 +323,7 @@
     const rightBar = new THREE.Mesh(barGeoZ, pvcMat); rightBar.position.set(frameOffset, 0.25, 0);
     buoy.add(frontBar, backBar, leftBar, rightBar);
 
-    const corners = [
-      [-frameOffset, -frameOffset], [frameOffset, -frameOffset],
-      [-frameOffset, frameOffset],  [frameOffset, frameOffset]
-    ];
-    corners.forEach(([cx, cz]) => {
+    [[-frameOffset, -frameOffset], [frameOffset, -frameOffset], [-frameOffset, frameOffset], [frameOffset, frameOffset]].forEach(([cx, cz]) => {
       const floatBall = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), floatMat);
       floatBall.position.set(cx, -0.15, cz);
       const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.28, 12), blackMat);
@@ -257,58 +332,55 @@
       buoy.add(floatBall, strap);
     });
 
-    // 2. Caja electrónica transparente (ESP32-S3 y batería)
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(1.1, 0.7, 0.9),
-      new THREE.MeshPhysicalMaterial({
-        color: 0xe2e8f0, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.1
-      })
+      new THREE.MeshPhysicalMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.55, roughness: 0.15 })
     );
     box.position.y = 0.72;
 
-    const pcbBoard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.75, 0.15, 0.6),
-      new THREE.MeshStandardMaterial({ color: 0x0f172a })
-    );
+    const pcbBoard = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.15, 0.6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
     pcbBoard.position.y = 0.65;
 
-    const beacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-    );
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
     beacon.position.set(0.15, 0.78, 0.15);
 
-    // 3. Mástil PVC y Antena Wi-Fi (ESP32-S3)
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.5, 12), pvcMat);
     mast.position.y = 1.8;
     const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.85, 12), blackMat);
     antenna.position.y = 2.95;
 
-    // 4. Jaula de sensores (DS18B20 / SEN0189) y tubería profunda de surgencia
     const sensorCage = new THREE.Mesh(
       new THREE.CylinderGeometry(0.32, 0.32, 0.95, 12, 1, true),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, wireframe: true })
     );
-    sensorCage.position.y = -1.3;
-
-    const intakePipe = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.18, 14.5, 16),
-      new THREE.MeshStandardMaterial({ color: 0x334155, transparent: true, opacity: 0.85 })
-    );
-    intakePipe.position.y = -7.2;
+    sensorCage.position.y = -1.2;
 
     const nozzle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.16, 0.24, 1.5, 14),
+      new THREE.CylinderGeometry(0.16, 0.24, 1.4, 14),
       new THREE.MeshStandardMaterial({ color: 0x38bdf8 })
     );
     nozzle.rotation.z = Math.PI / 2;
-    nozzle.position.set(-0.95, -1.3, 0);
+    nozzle.position.set(-0.9, -1.2, 0);
 
-    buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, intakePipe, nozzle);
+    buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, nozzle);
     scene.add(buoy);
 
-    // Partículas de Agua Fría (Surgencia Profunda + Proyección Horizontal al Arrecife)
-    const pCount = 260;
+    // Tubería Flexible Curva que sigue la pendiente de la arena hacia la fosa (sin atravesar el suelo)
+    const pipeCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(11.8, -11.8, 0), // Toma de agua fría en la fosa profunda (sobre la arena)
+      new THREE.Vector3(9.4, -8.6, 0),   // Curva paralela al talud
+      new THREE.Vector3(7.1, -5.1, 0),   // Ascenso por el borde del talud
+      new THREE.Vector3(6.2, -2.5, 0),   // Alineación vertical bajo la boya
+      new THREE.Vector3(6.2, -0.6, 0)    // Conexión a la bomba y boquilla
+    ]);
+    const curvedPipe = new THREE.Mesh(
+      new THREE.TubeGeometry(pipeCurve, 36, 0.17, 12, false),
+      new THREE.MeshStandardMaterial({ color: 0x334155, transparent: true, opacity: 0.88, roughness: 0.4 })
+    );
+    scene.add(curvedPipe);
+
+    // Partículas de Agua Fría (siguen la tubería curva y luego se dispersan sobre el arrecife)
+    const pCount = 280;
     const pGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(pCount * 3);
     const pLife = new Float32Array(pCount);
@@ -318,7 +390,7 @@
       pSpread[i] = (Math.random() - 0.5) * 2;
     }
     pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    const pMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.32, transparent: true, opacity: 0.88 });
+    const pMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.3, transparent: true, opacity: 0.9 });
     const particleSystem = new THREE.Points(pGeo, pMat);
     scene.add(particleSystem);
 
@@ -342,20 +414,40 @@
       ambSlider.value = 27.5;
     });
 
-    // Bucle Principal de Simulación
+    // Bucle Principal
     const clock = new THREE.Clock();
     const bleachedWhite = new THREE.Color(0xf1f5f9);
+    const tempVec = new THREE.Vector3();
 
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.1);
       const elapsed = clock.getElapsedTime();
 
-      // Flotación suave en el oleaje
-      buoy.position.y = 0.6 + Math.sin(elapsed * 2.2) * 0.12;
+      // Flotación suave de la boya
+      buoy.position.y = 0.6 + Math.sin(elapsed * 2.2) * 0.11;
       buoy.rotation.z = Math.sin(elapsed * 1.7) * 0.04;
 
-      // Lógica de Control de Bomba y Bloqueo por Contaminación (Failsafe)
+      // Transición visual de agua turbia y mancha de aceite/gasolina
+      const targetSpill = state.isSpill ? 1 : 0;
+      state.spillLevel += (targetSpill - state.spillLevel) * Math.min(1, dt * 3.5);
+
+      oceanMat.color.copy(clearWaterColor).lerp(murkyWaterColor, state.spillLevel);
+      oceanMat.opacity = 0.34 + state.spillLevel * 0.28;
+      scene.background.copy(clearBg).lerp(murkyBg, state.spillLevel);
+      scene.fog.color.copy(scene.background);
+      scene.fog.density = 0.013 + state.spillLevel * 0.022;
+      turbMat.opacity = state.spillLevel * 0.78;
+
+      slickGroup.position.y = 0.63 + Math.sin(elapsed * 2.2) * 0.06;
+      slickGroup.rotation.y = elapsed * 0.15;
+      slickMeshes.forEach((m, idx) => {
+        m.material.opacity = m.userData.targetOpacity * state.spillLevel;
+        const pulse = 1 + Math.sin(elapsed * 2 + idx) * 0.04 * state.spillLevel;
+        m.scale.set(pulse, pulse, 1);
+      });
+
+      // Lógica de Control y Failsafe
       const badge = document.getElementById('status-badge');
       if (state.isSpill) {
         state.pumpPWM = 0;
@@ -380,7 +472,7 @@
       const dT = 0.28 * (state.ambientTemp - state.reefTemp) - 0.45 * q * (state.reefTemp - state.deepTemp);
       state.reefTemp += dT * dt;
 
-      // Blanqueamiento y Recuperación Coralina
+      // Salud Coralina
       if (state.reefTemp > 30.0) {
         const excess = state.reefTemp - 30.0;
         state.coralHealth = Math.max(0, state.coralHealth - 4.0 * excess * excess * dt);
@@ -393,32 +485,31 @@
         mesh.material.color.copy(bleachedWhite).lerp(origColor, healthRatio);
       });
 
-      // Animación de Partículas de Agua Fría
+      // Animación de Partículas siguiendo la tubería curva y esparciéndose al arrecife
       particleSystem.visible = state.pumpPWM > 0;
       if (state.pumpPWM > 0) {
-        const speed = (state.pumpPWM / 100) * 0.52;
+        const speed = (state.pumpPWM / 100) * 0.48;
         const arr = pGeo.attributes.position.array;
         for (let i = 0; i < pCount; i++) {
           pLife[i] = (pLife[i] + speed * dt) % 1;
           const t = pLife[i];
-          if (t < 0.42) {
-            // Subiendo por la tubería profunda
-            const u = t / 0.42;
-            arr[i * 3] = 6.2 + (Math.random() - 0.5) * 0.16;
-            arr[i * 3 + 1] = -13.5 + u * 12.8;
-            arr[i * 3 + 2] = (Math.random() - 0.5) * 0.16;
+          if (t < 0.45) {
+            const u = t / 0.45;
+            pipeCurve.getPointAt(u, tempVec);
+            arr[i * 3] = tempVec.x + (Math.random() - 0.5) * 0.14;
+            arr[i * 3 + 1] = tempVec.y + (Math.random() - 0.5) * 0.14;
+            arr[i * 3 + 2] = tempVec.z + (Math.random() - 0.5) * 0.14;
           } else {
-            // Dispersándose horizontalmente sobre el arrecife
-            const u = (t - 0.42) / 0.58;
-            arr[i * 3] = 5.2 - u * 14.5;
-            arr[i * 3 + 1] = -0.7 - u * 1.25 + Math.sin(u * 8 + i) * 0.18;
-            arr[i * 3 + 2] = pSpread[i] * u * 7.5;
+            const u = (t - 0.45) / 0.55;
+            arr[i * 3] = 5.3 - u * 14.2;
+            arr[i * 3 + 1] = -0.6 - u * 1.45 + Math.sin(u * 8 + i) * 0.16;
+            arr[i * 3 + 2] = pSpread[i] * u * 7.8;
           }
         }
         pGeo.attributes.position.needsUpdate = true;
       }
 
-      // Actualizar Telemetría en Pantalla
+      // Actualizar Telemetría
       document.getElementById('amb-txt').textContent = `${state.ambientTemp.toFixed(1)} °C`;
       document.getElementById('reef-temp').textContent = `${state.reefTemp.toFixed(2)} °C`;
       document.getElementById('pump-pwm').textContent = `${state.pumpPWM}%`;
