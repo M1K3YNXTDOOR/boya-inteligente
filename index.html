@@ -10,7 +10,7 @@
     #canvas-container { width: 100vw; height: 100vh; display: block; touch-action: none; }
 
     #dashboard {
-      position: absolute; top: 16px; left: 16px; width: 345px;
+      position: absolute; top: 16px; left: 16px; width: 350px;
       background: rgba(6, 24, 40, 0.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 14px;
       padding: 16px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); z-index: 10;
@@ -51,14 +51,14 @@
 
     .ctrl-group { display: flex; flex-direction: column; gap: 7px; }
     .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    .slider-row { font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; margin-bottom: 2px; }
-    input[type="range"] { width: 100%; height: 22px; accent-color: #38bdf8; cursor: pointer; }
 
     button.ctrl-btn {
       padding: 9px 10px; border: none; border-radius: 8px; font-weight: 600; font-size: 0.8rem;
       cursor: pointer; transition: all 0.15s; color: #fff; background: #0284c7; min-height: 38px;
     }
     button.ctrl-btn:hover { background: #0369a1; }
+    button.ctrl-btn.thinger { background: #059669; border: 1px solid rgba(52, 211, 153, 0.4); }
+    button.ctrl-btn.thinger.connected { background: #10b981; color: #042f2e; font-weight: 700; }
     button.ctrl-btn.heat { background: #d97706; }
     button.ctrl-btn.heat:hover { background: #b45309; }
     button.ctrl-btn.turb { background: #854d0e; border: 1px solid rgba(250, 204, 21, 0.35); }
@@ -67,6 +67,20 @@
     button.ctrl-btn.spill.on { background: #ef4444; box-shadow: 0 0 12px rgba(239,68,68,0.5); }
     button.ctrl-btn.secondary { background: #334155; }
     button.ctrl-btn.secondary:hover { background: #475569; }
+
+    /* Panel de Configuración Thinger.io */
+    #thinger-config {
+      display: none; flex-direction: column; gap: 6px;
+      background: rgba(15, 41, 66, 0.85); padding: 10px; border-radius: 8px;
+      border: 1px solid rgba(52, 211, 153, 0.35); margin-bottom: 2px;
+    }
+    #thinger-config.open { display: flex; }
+    #thinger-config input {
+      width: 100%; padding: 6px 8px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15); background: #07192b;
+      color: #f8fafc; font-size: 0.78rem;
+    }
+    #thinger-config input::placeholder { color: #64748b; }
 
     #legend {
       position: absolute; bottom: 14px; right: 14px;
@@ -77,12 +91,11 @@
     }
     .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
 
-    /* Optimización Móvil */
     @media (max-width: 640px) {
       #dashboard {
         top: auto; bottom: 0; left: 0; right: 0; width: 100%;
         border-radius: 16px 16px 0 0; border-left: none; border-right: none; border-bottom: none;
-        padding: 12px 14px 16px; max-height: 56vh; overflow-y: auto;
+        padding: 12px 14px 16px; max-height: 62vh; overflow-y: auto;
       }
       #dashboard.collapsed .hud-body { display: none; }
       #dashboard.collapsed .header { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
@@ -110,7 +123,7 @@
     <div class="header">
       <div class="title-wrap">
         <h1>Boya Marina Inteligente</h1>
-        <p>Arrecife Mesoamericano - Roatán</p>
+        <p id="mode-subtitle">Lectura Directa - Roatán</p>
       </div>
       <div class="header-actions">
         <span id="status-badge" class="badge">EN ESPERA</span>
@@ -121,8 +134,8 @@
     <div class="hud-body">
       <div class="grid">
         <div class="card">
-          <div class="lbl">Temp. Arrecife (DS18B20)</div>
-          <div class="val" id="reef-temp">27.5 °C</div>
+          <div class="lbl">Temp. Actual (DS18B20)</div>
+          <div class="val" id="reef-temp">27.50 °C</div>
         </div>
         <div class="card">
           <div class="lbl">Bomba Surgencia (PWM)</div>
@@ -144,12 +157,16 @@
       </div>
 
       <div class="ctrl-group">
-        <div class="slider-row">
-          <div style="display:flex;justify-content:space-between;">
-            <span>Temperatura Ambiental:</span><strong id="amb-txt">27.5 °C</strong>
-          </div>
-          <input type="range" id="amb-slider" min="26.0" max="33.0" step="0.1" value="27.5" />
+        <button class="ctrl-btn thinger" id="btn-thinger">Conectar Thinger.io (En Vivo)</button>
+
+        <div id="thinger-config">
+          <input type="text" id="th-user" placeholder="Usuario de Thinger.io" />
+          <input type="text" id="th-device" placeholder="ID del Dispositivo (ej. boya_esp32)" />
+          <input type="text" id="th-resource" placeholder="Recurso (ej. temperatura o telemetry)" />
+          <input type="password" id="th-token" placeholder="Access Token de Thinger.io" />
+          <button class="ctrl-btn thinger" id="btn-thinger-start">Iniciar Lectura en Vivo</button>
         </div>
+
         <button class="ctrl-btn heat" id="btn-heat">Simular Ola de Calor (32°C)</button>
         <div class="btn-row">
           <button class="ctrl-btn turb" id="btn-turb">Simular Turbidez</button>
@@ -175,15 +192,18 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     const state = {
-      ambientTemp: 27.5,
+      liveThinger: false,
+      heatwaveSim: false,
       reefTemp: 27.5,
       deepTemp: 18.5,
       coralHealth: 100,
       pumpPWM: 0,
+      turbidityNTU: 4.0,
+      tdsPpm: 35000,
       isTurbid: false,
       isOilSpill: false,
-      turbLevel: 0, // 0 -> 1 suave
-      oilLevel: 0   // 0 -> 1 suave
+      turbLevel: 0,
+      oilLevel: 0
     };
 
     const isMobile = window.innerWidth <= 640;
@@ -195,7 +215,7 @@
     scene.fog = new THREE.FogExp2(0x04192c, 0.013);
 
     const camera = new THREE.PerspectiveCamera(isMobile ? 58 : 48, window.innerWidth / window.innerHeight, 0.1, 250);
-    camera.position.set(isMobile ? 1 : 1, isMobile ? 13 : 11, isMobile ? 33 : 26);
+    camera.position.set(1, isMobile ? 13 : 11, isMobile ? 33 : 26);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -208,7 +228,6 @@
     controls.maxPolarAngle = Math.PI * 0.85;
     controls.target.set(-1, isMobile ? -3.5 : -2.5, 0);
 
-    // Iluminación
     scene.add(new THREE.AmbientLight(0xffffff, 0.78));
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
     sun.position.set(-18, 28, 14);
@@ -218,7 +237,6 @@
     deepLight.position.set(9, -8, 4);
     scene.add(deepLight);
 
-    // Batimetría Costera
     function getSeabedY(x, z = 0) {
       const wave = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.18;
       if (x < -10) return (-x - 10) * 0.48 + wave * 0.4;
@@ -242,7 +260,6 @@
     );
     scene.add(seabed);
 
-    // Superficie del Mar
     const clearWaterColor = new THREE.Color(0x0ea5e9);
     const murkyWaterColor = new THREE.Color(0x5c5329);
     const oceanMat = new THREE.MeshPhysicalMaterial({
@@ -254,7 +271,7 @@
     oceanSurface.position.y = 0.6;
     scene.add(oceanSurface);
 
-    // 1. Capa Visual de Derrame de Gasolina / Aceite (Mancha iridiscente superficial)
+    // Mancha Iridescente de Gasolina / Aceite
     const slickGroup = new THREE.Group();
     slickGroup.position.set(6.2, 0.64, 0);
     const slickLayers = [
@@ -276,7 +293,7 @@
     });
     scene.add(slickGroup);
 
-    // 2. Capa Visual de Turbidez (Nube de sedimentos suspendidos en el agua)
+    // Partículas de Turbidez
     const turbCount = 300;
     const turbGeo = new THREE.BufferGeometry();
     const turbPos = new Float32Array(turbCount * 3);
@@ -411,7 +428,7 @@
     buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, nozzle);
     scene.add(buoy);
 
-    // Tubería Flexible Curva siguiendo el talud
+    // Tubería Flexible Curva
     const pipeCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(11.8, -11.8, 0),
       new THREE.Vector3(9.4, -8.6, 0),
@@ -440,7 +457,102 @@
     const particleSystem = new THREE.Points(pGeo, pMat);
     scene.add(particleSystem);
 
-    // Controles de Interfaz
+    // Conexión en Vivo con Thinger.io REST API
+    let thingerTimer = null;
+    const btnThinger = document.getElementById('btn-thinger');
+    const thingerConfig = document.getElementById('thinger-config');
+    const btnThingerStart = document.getElementById('btn-thinger-start');
+    const modeSub = document.getElementById('mode-subtitle');
+
+    const thUser = document.getElementById('th-user');
+    const thDevice = document.getElementById('th-device');
+    const thResource = document.getElementById('th-resource');
+    const thToken = document.getElementById('th-token');
+
+    // Cargar credenciales guardadas previamente
+    thUser.value = localStorage.getItem('th_user') || '';
+    thDevice.value = localStorage.getItem('th_device') || '';
+    thResource.value = localStorage.getItem('th_resource') || '';
+    thToken.value = localStorage.getItem('th_token') || '';
+
+    function stopThinger() {
+      state.liveThinger = false;
+      if (thingerTimer) clearInterval(thingerTimer);
+      thingerTimer = null;
+      btnThinger.textContent = 'Conectar Thinger.io (En Vivo)';
+      btnThinger.classList.remove('connected');
+      modeSub.textContent = 'Lectura Directa - Roatán';
+      modeSub.style.color = '#94a3b8';
+    }
+
+    btnThinger.addEventListener('click', () => {
+      if (state.liveThinger) {
+        stopThinger();
+        return;
+      }
+      thingerConfig.classList.toggle('open');
+    });
+
+    async function fetchThingerTemp() {
+      const user = thUser.value.trim();
+      const device = thDevice.value.trim();
+      const resource = thResource.value.trim();
+      const token = thToken.value.trim();
+
+      const url = `https://api.thinger.io/v3/users/${encodeURIComponent(user)}/devices/${encodeURIComponent(device)}/resources/${encodeURIComponent(resource)}?authorization=${encodeURIComponent(token)}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Soporta si Thinger devuelve un número directo (ej. 29.4) o un objeto JSON (ej. { temp: 29.4 } o { temperatura: 29.4 })
+        let tempVal = null;
+        if (typeof data === 'number') {
+          tempVal = data;
+        } else if (data && typeof data === 'object') {
+          tempVal = data.temp ?? data.temperature ?? data.temperatura ?? data.reefTemp ?? data.out ?? Object.values(data).find(v => typeof v === 'number');
+          if (typeof data.turbidity === 'number') state.turbidityNTU = data.turbidity;
+          if (typeof data.tds === 'number') state.tdsPpm = data.tds;
+        }
+
+        if (typeof tempVal === 'number' && !isNaN(tempVal)) {
+          state.reefTemp = tempVal;
+        }
+      } catch (err) {
+        console.error('Error leyendo Thinger.io:', err);
+        stopThinger();
+        alert('Error conectando con Thinger.io. Revisa Usuario, Device ID, Recurso y Access Token.');
+      }
+    }
+
+    btnThingerStart.addEventListener('click', async () => {
+      if (!thUser.value.trim() || !thDevice.value.trim() || !thResource.value.trim() || !thToken.value.trim()) {
+        alert('Completa los 4 campos de Thinger.io primero.');
+        return;
+      }
+
+      localStorage.setItem('th_user', thUser.value.trim());
+      localStorage.setItem('th_device', thDevice.value.trim());
+      localStorage.setItem('th_resource', thResource.value.trim());
+      localStorage.setItem('th_token', thToken.value.trim());
+
+      btnThingerStart.textContent = 'Conectando...';
+      await fetchThingerTemp();
+
+      state.liveThinger = true;
+      state.heatwaveSim = false;
+      thingerConfig.classList.remove('open');
+      btnThinger.textContent = 'Thinger.io Conectado (Desconectar)';
+      btnThinger.classList.add('connected');
+      btnThingerStart.textContent = 'Iniciar Lectura en Vivo';
+      modeSub.textContent = 'EN VIVO: Thinger.io (DS18B20)';
+      modeSub.style.color = '#34d399';
+
+      thingerTimer = setInterval(fetchThingerTemp, 1500);
+    });
+
+    // Controles Manuales de Simulación
     const dashboard = document.getElementById('dashboard');
     const toggleHudBtn = document.getElementById('toggle-hud');
     toggleHudBtn.addEventListener('click', () => {
@@ -448,32 +560,31 @@
       toggleHudBtn.textContent = dashboard.classList.contains('collapsed') ? 'Mostrar' : 'Ocultar';
     });
 
-    const ambSlider = document.getElementById('amb-slider');
     const btnTurb = document.getElementById('btn-turb');
     const btnSpill = document.getElementById('btn-spill');
 
-    ambSlider.addEventListener('input', (e) => {
-      state.ambientTemp = parseFloat(e.target.value);
-    });
     document.getElementById('btn-heat').addEventListener('click', () => {
-      state.ambientTemp = 32.0;
-      ambSlider.value = 32.0;
+      if (state.liveThinger) stopThinger();
+      state.heatwaveSim = true;
     });
     btnTurb.addEventListener('click', () => {
       state.isTurbid = !state.isTurbid;
+      state.turbidityNTU = state.isTurbid ? 68.0 : 4.0;
       btnTurb.classList.toggle('on', state.isTurbid);
     });
     btnSpill.addEventListener('click', () => {
       state.isOilSpill = !state.isOilSpill;
+      state.tdsPpm = state.isOilSpill ? 11200 : 35000;
       btnSpill.classList.toggle('on', state.isOilSpill);
     });
     document.getElementById('btn-reset').addEventListener('click', () => {
-      state.ambientTemp = 27.5;
-      state.reefTemp = 27.5;
+      state.heatwaveSim = false;
+      if (!state.liveThinger) state.reefTemp = 27.5;
       state.coralHealth = 100;
       state.isTurbid = false;
       state.isOilSpill = false;
-      ambSlider.value = 27.5;
+      state.turbidityNTU = 4.0;
+      state.tdsPpm = 35000;
       btnTurb.classList.remove('on');
       btnSpill.classList.remove('on');
     });
@@ -491,11 +602,9 @@
       buoy.position.y = 0.6 + Math.sin(elapsed * 2.2) * 0.11;
       buoy.rotation.z = Math.sin(elapsed * 1.7) * 0.04;
 
-      // Transiciones suaves independientes: Turbidez vs Derrame de Aceite/Gas
       state.turbLevel += ((state.isTurbid ? 1 : 0) - state.turbLevel) * Math.min(1, dt * 3.5);
       state.oilLevel += ((state.isOilSpill ? 1 : 0) - state.oilLevel) * Math.min(1, dt * 3.5);
 
-      // Efectos visuales de Turbidez (agua turbia + sedimentos)
       oceanMat.color.copy(clearWaterColor).lerp(murkyWaterColor, state.turbLevel);
       oceanMat.opacity = 0.34 + state.turbLevel * 0.32;
       scene.background.copy(clearBg).lerp(murkyBg, state.turbLevel);
@@ -503,7 +612,6 @@
       scene.fog.density = 0.013 + state.turbLevel * 0.026;
       turbMat.opacity = state.turbLevel * 0.85;
 
-      // Efectos visuales de Derrame de Gasolina/Aceite (mancha iridiscente superficial)
       slickGroup.position.y = 0.64 + Math.sin(elapsed * 2.2) * 0.05;
       slickGroup.rotation.y = elapsed * 0.18;
       slickMeshes.forEach((m, idx) => {
@@ -512,42 +620,46 @@
         m.scale.set(spreadScale, spreadScale, 1);
       });
 
-      // Lógica de Control y Failsafe Independiente
+      // Control autónomo de la bomba según temperatura real (Thinger.io) o simulada
+      if (state.isOilSpill || state.isTurbid) {
+        state.pumpPWM = 0;
+      } else if (state.reefTemp >= 29.0) {
+        const factor = Math.min(1, (state.reefTemp - 28.8) / 2.2);
+        state.pumpPWM = Math.round(55 + factor * 45);
+      } else if (state.reefTemp <= 28.4) {
+        state.pumpPWM = 0;
+      }
+
+      if (!state.liveThinger && state.heatwaveSim) {
+        const targetTemp = 32.0;
+        const q = state.pumpPWM / 100;
+        const dT = 0.28 * (targetTemp - state.reefTemp) - 0.45 * q * (state.reefTemp - state.deepTemp);
+        state.reefTemp += dT * dt;
+      }
+
       const badge = document.getElementById('status-badge');
       if (state.isOilSpill && state.isTurbid) {
-        state.pumpPWM = 0;
         badge.textContent = 'BLOQUEO: DERRAME + TURB.';
         badge.className = 'badge danger';
         beacon.material.color.setHex(0xef4444);
       } else if (state.isOilSpill) {
-        state.pumpPWM = 0;
         badge.textContent = 'BLOQUEO: DERRAME GAS';
         badge.className = 'badge danger';
         beacon.material.color.setHex(0xa855f7);
       } else if (state.isTurbid) {
-        state.pumpPWM = 0;
         badge.textContent = 'BLOQUEO: TURBIDEZ';
         badge.className = 'badge warn';
         beacon.material.color.setHex(0xf59e0b);
-      } else if (state.reefTemp >= 29.0) {
-        const factor = Math.min(1, (state.reefTemp - 28.8) / 2.2);
-        state.pumpPWM = Math.round(55 + factor * 45);
+      } else if (state.pumpPWM > 0) {
         badge.textContent = 'ENFRIANDO';
         badge.className = 'badge active';
         beacon.material.color.setHex(0x38bdf8);
-      } else if (state.reefTemp <= 28.4) {
-        state.pumpPWM = 0;
+      } else {
         badge.textContent = 'EN ESPERA';
         badge.className = 'badge';
         beacon.material.color.setHex(0x10b981);
       }
 
-      // Termodinámica
-      const q = state.pumpPWM / 100;
-      const dT = 0.28 * (state.ambientTemp - state.reefTemp) - 0.45 * q * (state.reefTemp - state.deepTemp);
-      state.reefTemp += dT * dt;
-
-      // Salud Coralina
       if (state.reefTemp > 30.0) {
         const excess = state.reefTemp - 30.0;
         state.coralHealth = Math.max(0, state.coralHealth - 4.0 * excess * excess * dt);
@@ -560,7 +672,6 @@
         mesh.material.color.copy(bleachedWhite).lerp(origColor, healthRatio);
       });
 
-      // Partículas de Agua Fría
       particleSystem.visible = state.pumpPWM > 0;
       if (state.pumpPWM > 0) {
         const speed = (state.pumpPWM / 100) * 0.48;
@@ -584,12 +695,10 @@
         pGeo.attributes.position.needsUpdate = true;
       }
 
-      // Actualizar Telemetría
-      document.getElementById('amb-txt').textContent = `${state.ambientTemp.toFixed(1)} °C`;
       document.getElementById('reef-temp').textContent = `${state.reefTemp.toFixed(2)} °C`;
       document.getElementById('pump-pwm').textContent = `${state.pumpPWM}%`;
-      document.getElementById('turb-val').textContent = state.isTurbid ? '68.0 NTU' : '4.0 NTU';
-      document.getElementById('tds-val').textContent = state.isOilSpill ? '11,200 ppm' : '35,000 ppm';
+      document.getElementById('turb-val').textContent = `${state.turbidityNTU.toFixed(1)} NTU`;
+      document.getElementById('tds-val').textContent = `${state.tdsPpm.toLocaleString()} ppm`;
       document.getElementById('health-txt').textContent = `${Math.round(state.coralHealth)}%`;
 
       const bar = document.getElementById('health-bar');
