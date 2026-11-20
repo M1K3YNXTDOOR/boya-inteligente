@@ -42,7 +42,7 @@
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .card { background: rgba(15, 41, 66, 0.65); padding: 9px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); }
     .card .lbl { font-size: 0.68rem; color: #94a3b8; margin-bottom: 3px; }
-    .card .val { font-size: 1rem; font-weight: 700; color: #f8fafc; }
+    .card .val { font-size: 1rem; font-weight: 700; color: #f8fafc; transition: color 0.2s; }
 
     .bar-wrap { margin-bottom: 12px; }
     .bar-top { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 4px; }
@@ -68,7 +68,6 @@
     button.ctrl-btn.secondary { background: #334155; }
     button.ctrl-btn.secondary:hover { background: #475569; }
 
-    /* Panel de Configuración Thinger.io */
     #thinger-config {
       display: none; flex-direction: column; gap: 6px;
       background: rgba(15, 41, 66, 0.85); padding: 10px; border-radius: 8px;
@@ -159,11 +158,11 @@
       <div class="ctrl-group">
         <button class="ctrl-btn thinger" id="btn-thinger">Conectar Thinger.io (En Vivo)</button>
 
-        <div id="thinger-config">
-          <input type="text" id="th-user" placeholder="Usuario de Thinger.io" />
-          <input type="text" id="th-device" placeholder="ID del Dispositivo (ej. boya_esp32)" />
-          <input type="text" id="th-resource" placeholder="Recurso (ej. temperatura o telemetry)" />
-          <input type="password" id="th-token" placeholder="Access Token de Thinger.io" />
+        <div id="thinger-config" class="open">
+          <input type="text" id="th-user" placeholder="Usuario de Thinger.io" value="joseth" />
+          <input type="text" id="th-device" placeholder="ID del Dispositivo" value="boya_roatan" />
+          <input type="text" id="th-resource" placeholder="Recurso (ej. Temperatura)" value="Temperatura" />
+          <input type="password" id="th-token" placeholder="Pega tu Access Token (eyJ...)" />
           <button class="ctrl-btn thinger" id="btn-thinger-start">Iniciar Lectura en Vivo</button>
         </div>
 
@@ -180,7 +179,8 @@
   <div id="legend">
     <span><i class="dot" style="background:#e2c285;"></i>Playa/Plataforma</span>
     <span><i class="dot" style="background:#10b981;"></i>Coral</span>
-    <span><i class="dot" style="background:#38bdf8;"></i>Agua Fría</span>
+    <span><i class="dot" style="background:#38bdf8;"></i>Agua Fría 360°</span>
+    <span><i class="dot" style="background:#ef4444;"></i>Agua Cálida</span>
     <span><i class="dot" style="background:#ca8a04;"></i>Turbidez</span>
     <span><i class="dot" style="background:#a855f7;"></i>Aceite/Gas</span>
   </div>
@@ -203,19 +203,25 @@
       isTurbid: false,
       isOilSpill: false,
       turbLevel: 0,
-      oilLevel: 0
+      oilLevel: 0,
+      heatLevel: 0
     };
+
+    // Coordenada central de la boya directamente sobre el arrecife coralino
+    const BUOY_X = -2.2;
+    const BUOY_Z = 0;
 
     const isMobile = window.innerWidth <= 640;
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
     const clearBg = new THREE.Color(0x04192c);
+    const warmBg = new THREE.Color(0x280d14);
     const murkyBg = new THREE.Color(0x232415);
     scene.background = clearBg.clone();
     scene.fog = new THREE.FogExp2(0x04192c, 0.013);
 
     const camera = new THREE.PerspectiveCamera(isMobile ? 58 : 48, window.innerWidth / window.innerHeight, 0.1, 250);
-    camera.position.set(1, isMobile ? 13 : 11, isMobile ? 33 : 26);
+    camera.position.set(1, isMobile ? 14 : 11.5, isMobile ? 34 : 27);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -226,16 +232,21 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.maxPolarAngle = Math.PI * 0.85;
-    controls.target.set(-1, isMobile ? -3.5 : -2.5, 0);
+    controls.target.set(-0.5, isMobile ? -3.5 : -2.6, 0);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.78));
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
     sun.position.set(-18, 28, 14);
     scene.add(sun);
 
-    const deepLight = new THREE.PointLight(0x0284c7, 2.5, 40);
-    deepLight.position.set(9, -8, 4);
+    const deepLight = new THREE.PointLight(0x0284c7, 2.5, 42);
+    deepLight.position.set(8, -8, 4);
     scene.add(deepLight);
+
+    // Luz térmica sutil sobre el arrecife que se tiñe de rojo cuando sube la temperatura
+    const thermalLight = new THREE.PointLight(0xef4444, 0, 26);
+    thermalLight.position.set(BUOY_X, 0.2, BUOY_Z);
+    scene.add(thermalLight);
 
     function getSeabedY(x, z = 0) {
       const wave = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.18;
@@ -261,6 +272,7 @@
     scene.add(seabed);
 
     const clearWaterColor = new THREE.Color(0x0ea5e9);
+    const warmWaterColor = new THREE.Color(0xdc2626);
     const murkyWaterColor = new THREE.Color(0x5c5329);
     const oceanMat = new THREE.MeshPhysicalMaterial({
       color: clearWaterColor.clone(), transparent: true, opacity: 0.34,
@@ -271,9 +283,9 @@
     oceanSurface.position.y = 0.6;
     scene.add(oceanSurface);
 
-    // Mancha Iridescente de Gasolina / Aceite
+    // Mancha Iridescente de Gasolina / Aceite centrada bajo la boya
     const slickGroup = new THREE.Group();
-    slickGroup.position.set(6.2, 0.64, 0);
+    slickGroup.position.set(BUOY_X, 0.64, BUOY_Z);
     const slickLayers = [
       { radius: 3.8, color: 0x1e1b4b, opacity: 0.62 },
       { radius: 2.8, color: 0x9333ea, opacity: 0.50 },
@@ -307,7 +319,7 @@
     const turbidityCloud = new THREE.Points(turbGeo, turbMat);
     scene.add(turbidityCloud);
 
-    // Arrecife Coralino Detallado
+    // Arrecife Coralino alrededor de la boya (-8.8 a 3.4)
     const reefGroup = new THREE.Group();
     const coralMeshes = [];
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
@@ -322,8 +334,8 @@
       reefGroup.add(rock);
     }
 
-    for (let i = 0; i < 42; i++) {
-      const cx = -8.8 + Math.random() * 12.0;
+    for (let i = 0; i < 44; i++) {
+      const cx = -8.8 + Math.random() * 12.2;
       const cz = (Math.random() - 0.5) * 17;
       const baseY = getSeabedY(cx, cz);
       const origColor = new THREE.Color(palette[i % palette.length]);
@@ -365,9 +377,9 @@
     }
     scene.add(reefGroup);
 
-    // Boya Marina Inteligente (PVC 1", 4 Flotadores Amarillos, ESP32-S3)
+    // Boya Marina Inteligente sobre el arrecife (-2.2, 0.6, 0)
     const buoy = new THREE.Group();
-    buoy.position.set(6.2, 0.6, 0);
+    buoy.position.set(BUOY_X, 0.6, BUOY_Z);
 
     const pvcMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
     const floatMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
@@ -418,44 +430,62 @@
     );
     sensorCage.position.y = -1.2;
 
-    const nozzle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.16, 0.24, 1.4, 14),
-      new THREE.MeshStandardMaterial({ color: 0x38bdf8 })
+    const diffuserRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.65, 0.11, 12, 24),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 })
     );
-    nozzle.rotation.z = Math.PI / 2;
-    nozzle.position.set(-0.9, -1.2, 0);
+    diffuserRing.rotation.x = Math.PI / 2;
+    diffuserRing.position.y = -1.15;
 
-    buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, nozzle);
+    buoy.add(box, pcbBoard, beacon, mast, antenna, sensorCage, diffuserRing);
     scene.add(buoy);
 
-    // Tubería Flexible Curva
+    // Tubería Flexible Curva desde la zona profunda, bordeando el talud del arrecife hasta la boya
     const pipeCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(11.8, -11.8, 0),
-      new THREE.Vector3(9.4, -8.6, 0),
-      new THREE.Vector3(7.1, -5.1, 0),
-      new THREE.Vector3(6.2, -2.5, 0),
-      new THREE.Vector3(6.2, -0.6, 0)
+      new THREE.Vector3(12.4, -13.2, 0),
+      new THREE.Vector3(9.4, -9.8, 0),
+      new THREE.Vector3(6.4, -5.8, 0),
+      new THREE.Vector3(3.8, -2.15, 0),
+      new THREE.Vector3(0.6, -1.95, 0),
+      new THREE.Vector3(BUOY_X, -1.65, 0),
+      new THREE.Vector3(BUOY_X, -0.55, 0)
     ]);
     const curvedPipe = new THREE.Mesh(
-      new THREE.TubeGeometry(pipeCurve, 36, 0.17, 12, false),
+      new THREE.TubeGeometry(pipeCurve, 48, 0.17, 12, false),
       new THREE.MeshStandardMaterial({ color: 0x334155, transparent: true, opacity: 0.88, roughness: 0.4 })
     );
     scene.add(curvedPipe);
 
-    // Partículas de Agua Fría
-    const pCount = 280;
+    // Partículas de Agua Fría con dispersión circular de 360°
+    const pCount = 360;
     const pGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(pCount * 3);
     const pLife = new Float32Array(pCount);
-    const pSpread = new Float32Array(pCount);
+    const pAngle = new Float32Array(pCount);
+    const pRadiusBias = new Float32Array(pCount);
+
     for (let i = 0; i < pCount; i++) {
       pLife[i] = Math.random();
-      pSpread[i] = (Math.random() - 0.5) * 2;
+      pAngle[i] = Math.random() * Math.PI * 2;
+      pRadiusBias[i] = 0.75 + Math.random() * 0.45;
     }
     pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    const pMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.3, transparent: true, opacity: 0.9 });
+    const pMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.28, transparent: true, opacity: 0.92 });
     const particleSystem = new THREE.Points(pGeo, pMat);
     scene.add(particleSystem);
+
+    // Anillos de onda fría expandiéndose en círculo sobre el arrecife
+    const rippleRings = [0, 0.33, 0.66].map((phase) => {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.6, 0.82, 36),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(BUOY_X, -1.75, BUOY_Z);
+      ring.userData.phase = phase;
+      scene.add(ring);
+      return ring;
+    });
 
     // Conexión en Vivo con Thinger.io REST API
     let thingerTimer = null;
@@ -469,10 +499,9 @@
     const thResource = document.getElementById('th-resource');
     const thToken = document.getElementById('th-token');
 
-    // Cargar credenciales guardadas previamente
-    thUser.value = localStorage.getItem('th_user') || '';
-    thDevice.value = localStorage.getItem('th_device') || '';
-    thResource.value = localStorage.getItem('th_resource') || '';
+    thUser.value = localStorage.getItem('th_user') || 'joseth';
+    thDevice.value = localStorage.getItem('th_device') || 'boya_roatan';
+    thResource.value = localStorage.getItem('th_resource') || 'Temperatura';
     thToken.value = localStorage.getItem('th_token') || '';
 
     function stopThinger() {
@@ -499,19 +528,28 @@
       const resource = thResource.value.trim();
       const token = thToken.value.trim();
 
-      const url = `https://api.thinger.io/v3/users/${encodeURIComponent(user)}/devices/${encodeURIComponent(device)}/resources/${encodeURIComponent(resource)}?authorization=${encodeURIComponent(token)}`;
+      const baseUrl = `https://api.thinger.io/v3/users/${encodeURIComponent(user)}/devices/${encodeURIComponent(device)}/resources/${encodeURIComponent(resource)}`;
 
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let res = await fetch(baseUrl, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          res = await fetch(`${baseUrl}?authorization=${encodeURIComponent(token)}`);
+        }
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} (${res.status === 404 ? 'Dispositivo desconectado o recurso no encontrado' : res.status === 401 ? 'Token inválido o bloqueado en Deny' : 'Error de servidor'})`);
+        }
+
         const data = await res.json();
 
-        // Soporta si Thinger devuelve un número directo (ej. 29.4) o un objeto JSON (ej. { temp: 29.4 } o { temperatura: 29.4 })
         let tempVal = null;
         if (typeof data === 'number') {
           tempVal = data;
         } else if (data && typeof data === 'object') {
-          tempVal = data.temp ?? data.temperature ?? data.temperatura ?? data.reefTemp ?? data.out ?? Object.values(data).find(v => typeof v === 'number');
+          tempVal = data.Temperatura ?? data.temperatura ?? data.reefTemp ?? data.temp ?? data.temperature ?? data.out ?? Object.values(data).find(v => typeof v === 'number');
           if (typeof data.turbidity === 'number') state.turbidityNTU = data.turbidity;
           if (typeof data.tds === 'number') state.tdsPpm = data.tds;
         }
@@ -522,13 +560,15 @@
       } catch (err) {
         console.error('Error leyendo Thinger.io:', err);
         stopThinger();
-        alert('Error conectando con Thinger.io. Revisa Usuario, Device ID, Recurso y Access Token.');
+        btnThingerStart.textContent = 'Iniciar Lectura en Vivo';
+        alert(`No se pudo leer Thinger.io: ${err.message}`);
+        throw err;
       }
     }
 
     btnThingerStart.addEventListener('click', async () => {
       if (!thUser.value.trim() || !thDevice.value.trim() || !thResource.value.trim() || !thToken.value.trim()) {
-        alert('Completa los 4 campos de Thinger.io primero.');
+        alert('Completa todos los campos de Thinger.io primero.');
         return;
       }
 
@@ -538,21 +578,21 @@
       localStorage.setItem('th_token', thToken.value.trim());
 
       btnThingerStart.textContent = 'Conectando...';
-      await fetchThingerTemp();
-
-      state.liveThinger = true;
-      state.heatwaveSim = false;
-      thingerConfig.classList.remove('open');
-      btnThinger.textContent = 'Thinger.io Conectado (Desconectar)';
-      btnThinger.classList.add('connected');
-      btnThingerStart.textContent = 'Iniciar Lectura en Vivo';
-      modeSub.textContent = 'EN VIVO: Thinger.io (DS18B20)';
-      modeSub.style.color = '#34d399';
-
-      thingerTimer = setInterval(fetchThingerTemp, 1500);
+      try {
+        await fetchThingerTemp();
+        state.liveThinger = true;
+        state.heatwaveSim = false;
+        thingerConfig.classList.remove('open');
+        btnThinger.textContent = 'Thinger.io Conectado (Desconectar)';
+        btnThinger.classList.add('connected');
+        btnThingerStart.textContent = 'Iniciar Lectura en Vivo';
+        modeSub.textContent = 'EN VIVO: Thinger.io (boya_roatan)';
+        modeSub.style.color = '#34d399';
+        thingerTimer = setInterval(() => fetchThingerTemp().catch(() => {}), 1500);
+      } catch (_) {}
     });
 
-    // Controles Manuales de Simulación
+    // Controles Manuales
     const dashboard = document.getElementById('dashboard');
     const toggleHudBtn = document.getElementById('toggle-hud');
     toggleHudBtn.addEventListener('click', () => {
@@ -593,6 +633,8 @@
     const clock = new THREE.Clock();
     const bleachedWhite = new THREE.Color(0xf1f5f9);
     const tempVec = new THREE.Vector3();
+    const activeWaterColor = new THREE.Color();
+    const activeBgColor = new THREE.Color();
 
     function animate() {
       requestAnimationFrame(animate);
@@ -602,15 +644,25 @@
       buoy.position.y = 0.6 + Math.sin(elapsed * 2.2) * 0.11;
       buoy.rotation.z = Math.sin(elapsed * 1.7) * 0.04;
 
+      // Factor térmico: 0 a <=28.0°C, 1 a >=31.5°C para teñir el agua ligeramente de rojo al calentarse
+      const targetHeat = Math.min(1, Math.max(0, (state.reefTemp - 28.0) / 3.5));
+      state.heatLevel += (targetHeat - state.heatLevel) * Math.min(1, dt * 3.0);
       state.turbLevel += ((state.isTurbid ? 1 : 0) - state.turbLevel) * Math.min(1, dt * 3.5);
       state.oilLevel += ((state.isOilSpill ? 1 : 0) - state.oilLevel) * Math.min(1, dt * 3.5);
 
-      oceanMat.color.copy(clearWaterColor).lerp(murkyWaterColor, state.turbLevel);
-      oceanMat.opacity = 0.34 + state.turbLevel * 0.32;
-      scene.background.copy(clearBg).lerp(murkyBg, state.turbLevel);
-      scene.fog.color.copy(scene.background);
+      // Mezclar color del agua: azul -> rojizo por calor -> marrón si hay turbidez
+      activeWaterColor.copy(clearWaterColor).lerp(warmWaterColor, state.heatLevel * 0.65);
+      activeWaterColor.lerp(murkyWaterColor, state.turbLevel);
+      oceanMat.color.copy(activeWaterColor);
+      oceanMat.opacity = 0.34 + state.heatLevel * 0.12 + state.turbLevel * 0.28;
+
+      activeBgColor.copy(clearBg).lerp(warmBg, state.heatLevel * 0.75);
+      activeBgColor.lerp(murkyBg, state.turbLevel);
+      scene.background.copy(activeBgColor);
+      scene.fog.color.copy(activeBgColor);
       scene.fog.density = 0.013 + state.turbLevel * 0.026;
       turbMat.opacity = state.turbLevel * 0.85;
+      thermalLight.intensity = state.heatLevel * 2.4;
 
       slickGroup.position.y = 0.64 + Math.sin(elapsed * 2.2) * 0.05;
       slickGroup.rotation.y = elapsed * 0.18;
@@ -620,7 +672,6 @@
         m.scale.set(spreadScale, spreadScale, 1);
       });
 
-      // Control autónomo de la bomba según temperatura real (Thinger.io) o simulada
       if (state.isOilSpill || state.isTurbid) {
         state.pumpPWM = 0;
       } else if (state.reefTemp >= 29.0) {
@@ -674,28 +725,50 @@
 
       particleSystem.visible = state.pumpPWM > 0;
       if (state.pumpPWM > 0) {
-        const speed = (state.pumpPWM / 100) * 0.48;
+        const speed = (state.pumpPWM / 100) * 0.45;
         const arr = pGeo.attributes.position.array;
         for (let i = 0; i < pCount; i++) {
           pLife[i] = (pLife[i] + speed * dt) % 1;
           const t = pLife[i];
-          if (t < 0.45) {
-            const u = t / 0.45;
+          if (t < 0.48) {
+            const u = t / 0.48;
             pipeCurve.getPointAt(u, tempVec);
             arr[i * 3] = tempVec.x + (Math.random() - 0.5) * 0.14;
             arr[i * 3 + 1] = tempVec.y + (Math.random() - 0.5) * 0.14;
             arr[i * 3 + 2] = tempVec.z + (Math.random() - 0.5) * 0.14;
           } else {
-            const u = (t - 0.45) / 0.55;
-            arr[i * 3] = 5.3 - u * 14.2;
-            arr[i * 3 + 1] = -0.6 - u * 1.45 + Math.sin(u * 8 + i) * 0.16;
-            arr[i * 3 + 2] = pSpread[i] * u * 7.8;
+            const u = (t - 0.48) / 0.52;
+            const radius = (0.65 + u * 6.8) * pRadiusBias[i];
+            const theta = pAngle[i] + u * 0.45;
+            const px = BUOY_X + Math.cos(theta) * radius;
+            const pz = BUOY_Z + Math.sin(theta) * radius;
+            const floorY = getSeabedY(px, pz) + 0.35;
+            const startY = -0.55;
+            const py = startY + (floorY - startY) * Math.min(1, u * 1.35) + Math.sin(u * 9 + i) * 0.14;
+
+            arr[i * 3] = px;
+            arr[i * 3 + 1] = py;
+            arr[i * 3 + 2] = pz;
           }
         }
         pGeo.attributes.position.needsUpdate = true;
       }
 
-      document.getElementById('reef-temp').textContent = `${state.reefTemp.toFixed(2)} °C`;
+      rippleRings.forEach((ring) => {
+        if (state.pumpPWM <= 0) {
+          ring.material.opacity = 0;
+          return;
+        }
+        const cycle = (elapsed * 0.45 + ring.userData.phase) % 1;
+        const scale = 1 + cycle * 8.5;
+        ring.scale.set(scale, scale, 1);
+        ring.material.opacity = (1 - cycle) * 0.38 * (state.pumpPWM / 100);
+      });
+
+      const tempEl = document.getElementById('reef-temp');
+      tempEl.textContent = `${state.reefTemp.toFixed(2)} °C`;
+      tempEl.style.color = state.reefTemp >= 29.0 ? '#f87171' : '#f8fafc';
+
       document.getElementById('pump-pwm').textContent = `${state.pumpPWM}%`;
       document.getElementById('turb-val').textContent = `${state.turbidityNTU.toFixed(1)} NTU`;
       document.getElementById('tds-val').textContent = `${state.tdsPpm.toLocaleString()} ppm`;
